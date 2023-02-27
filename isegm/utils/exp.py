@@ -4,7 +4,7 @@ import shutil
 import pprint
 from pathlib import Path
 from datetime import datetime
-
+ 
 import yaml
 import torch
 from easydict import EasyDict as edict
@@ -16,7 +16,7 @@ from .distributed import synchronize, get_world_size
 def init_experiment(args, model_name):
     model_path = Path(args.model_path)
     ftree = get_model_family_tree(model_path, model_name=model_name)
-    
+
     if ftree is None:
         print('Models can only be located in the "models" directory in the root of the repository')
         sys.exit(1)
@@ -84,9 +84,7 @@ def init_experiment(args, model_name):
         if cfg.multi_gpu:
             os.environ['CUDA_VISIBLE_DEVICES'] = cfg.gpus
             ngpus = torch.cuda.device_count()
-            # Added by Xavier
-            # cfg.gpu_ids = [i for i in range(ngpus)]
-            # assert ngpus == cfg.ngpus
+            assert cfg.ngpus <= ngpus
         cfg.device = torch.device(f'cuda:{cfg.gpu_ids[0]}')
 
     if cfg.local_rank == 0:

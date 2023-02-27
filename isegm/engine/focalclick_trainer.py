@@ -15,7 +15,7 @@ from isegm.utils.vis import draw_probmap, draw_points, add_tag
 from isegm.utils.misc import save_checkpoint
 from isegm.utils.serialization import get_config_repr
 from isegm.utils.distributed import get_dp_wrapper, get_sampler, reduce_loss_dict
-from .optimizer import get_optimizer
+from .optimizer import get_optimizer, get_optimizer_with_layerwise_decay
 from torch.cuda.amp import autocast as autocast, GradScaler
 scaler = GradScaler()
 
@@ -24,6 +24,7 @@ class ISTrainer(object):
                  trainset, valset,
                  optimizer='adam',
                  optimizer_params=None,
+                 layerwise_decay=False,
                  image_dump_interval=200,
                  checkpoint_interval=10,
                  tb_dump_period=25,
@@ -84,7 +85,10 @@ class ISTrainer(object):
             num_workers=cfg.workers
         )
 
-        self.optim = get_optimizer(model, optimizer, optimizer_params)
+        if layerwise_decay:
+            self.optim = get_optimizer_with_layerwise_decay(model, optimizer, optimizer_params)
+        else:
+            self.optim = get_optimizer(model, optimizer, optimizer_params)
         model = self._load_weights(model)
 
         if cfg.multi_gpu:
@@ -122,8 +126,9 @@ class ISTrainer(object):
         logger.info(f'Total Epochs: {num_epochs}')
         for epoch in range(start_epoch, num_epochs):
             self.training(epoch)
-            #if validation:
-            #    self.validation(epoch)
+            assert not validation, "compat, should be False"
+            if validation:
+                self.validation(epoch)
 
     def training(self, epoch):
         if self.sw is None and self.is_master:
@@ -141,9 +146,6 @@ class ISTrainer(object):
             metric.reset_epoch_stats()
 
         self.net.train()
-        #for m in self.net.feature_extractor.modules():
-        #        m.eval()
-
         train_loss = 0.0
         for i, batch_data in enumerate(tbar):
             global_step = epoch * len(self.train_data) + i
@@ -277,7 +279,6 @@ class ISTrainer(object):
                         eval_model = self.net
                     else:
                         eval_model = self.click_models[click_indx]
-
 
                     net_input = torch.cat((image, prev_output), dim=1) if self.net.with_prev_mask else image
                     prev_output = torch.sigmoid(eval_model(net_input, points)['instances'])
@@ -417,7 +418,7 @@ class ISTrainer(object):
         viz_image_focus = np.hstack((images_focus_with_points,predicted_mask_focus,  pred_masked_image, predicted_trimap_focus )).astype(np.uint8)
         viz_image = np.vstack([viz_image_full,viz_image_focus])
         
-        _save_image('focalclick_vis', viz_image[:, :, ::-1])
+        _save_image('focalsimpleclick_vis', viz_image[:, :, ::-1])
 
     def _load_weights(self, net):
         if self.cfg.weights is not None:
@@ -503,4 +504,5 @@ def load_weights(model, path_to_weights):
     print(' lacked: ', old_keys - new_keys )
     print('='*10)
     current_state_dict.update(new_state_dict)
-    model.load_state_dict(current_state_dict, strict=False)
+    # compat, strict set to True
+    model.load_state_dict(current_state_dict, strict=True)

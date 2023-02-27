@@ -70,9 +70,6 @@ class BasePredictor(object):
             prev_mask = self.prev_prediction
         if hasattr(self.net, 'with_prev_mask') and self.net.with_prev_mask:
             input_image = torch.cat((input_image, prev_mask), dim=1)
-
-        
-
         image_nd, clicks_lists, is_image_changed = self.apply_transforms(
             input_image, [clicks_list]
         )
@@ -92,33 +89,23 @@ class BasePredictor(object):
             
         self.global_roi = global_roi
         
-
-
-        
         pred_logits, feature= self._get_prediction(image_nd, clicks_lists, is_image_changed)
         prediction = F.interpolate(pred_logits, mode='bilinear', align_corners=True,
                                    size=image_nd.size()[2:])
-                         
 
         for t in reversed(self.transforms):
-            #if not isinstance(t,SigmoidForPred):
             prediction = t.inv_transform(prediction)
 
-        #if self.zoom_in is not None and self.zoom_in.check_possible_recalculation():
-        #    return self.get_prediction(clicker)
+        assert not (self.zoom_in is not None and self.zoom_in.check_possible_recalculation()), "compat, should be false"
+        if self.zoom_in is not None and self.zoom_in.check_possible_recalculation():
+           return self.get_prediction(clicker)
             
 
-
-        #self.prev_prediction = prediction
-        #return prediction.cpu().numpy()[0, 0]
-
-
         prediction  = torch.log( prediction/(1-prediction)  )
-        coarse_mask = prediction#.cpu().numpy()[0, 0] > 0.49
-        prev_mask = prev_mask#.cpu().numpy()[0, 0] > 0.49
+        coarse_mask = prediction
+        prev_mask = prev_mask
         clicks_list = clicker.get_clicks()
         image_full = self.original_image
-        #print(coarse_mask.max(),coarse_mask.min() )
 
         coarse_mask_np = coarse_mask.cpu().numpy()[0, 0] 
         prev_mask_np = prev_mask.cpu().numpy()[0, 0] 
@@ -141,16 +128,14 @@ class BasePredictor(object):
         self.focus_roi = focus_roi
         focus_roi_in_global_roi = self.mapp_roi(focus_roi, global_roi)
         focus_pred = self._get_refine(pred_logits,image_full,clicks_list, feature, focus_roi, focus_roi_in_global_roi)#.cpu().numpy()[0, 0]
-        focus_pred = F.interpolate(focus_pred,(y2-y1,x2-x1),mode='bilinear',align_corners=False)#.cpu().numpy()[0, 0]
+        focus_pred = F.interpolate(focus_pred,(y2-y1,x2-x1),mode='bilinear',align_corners=False)
         
         coarse_mask[:,:,y1:y2,x1:x2] =  focus_pred
         coarse_mask = torch.sigmoid(coarse_mask)
         
 
         self.prev_prediction = coarse_mask
-        #print(111,self.transforms[0]._prev_probs.sum())
         self.transforms[0]._prev_probs = coarse_mask.cpu().numpy()
-        #print(222,self.transforms[0]._prev_probs.sum())
         return coarse_mask.cpu().numpy()[0, 0]
 
     def _get_prediction(self, image_nd, clicks_lists, is_image_changed):
@@ -170,21 +155,17 @@ class BasePredictor(object):
             print(ly,lx, self.prev_prediction[0,0,ly,lx])
 
         mask_focus = coarse_mask
-        #mask_focus = coarse_mask[:,:,y1:y2,x1:x2]
-        #mask_focus = F.interpolate(mask_focus,(self.crop_l,self.crop_l),mode='bilinear',align_corners=True)
-
         points_nd = self.get_points_nd_inbbox(clicks,y1,y2,x1,x2)
         y1,y2,x1,x2 = focus_roi_in_global_roi
         roi = torch.tensor([0,x1, y1, x2, y2]).unsqueeze(0).float().to(image_focus.device)
 
 
-        pred = self.net.refine(image_focus,points_nd, feature, mask_focus, roi) #['instances_refined'] 
+        pred = self.net.refine(image_focus,points_nd, feature, mask_focus, roi)
         focus_coarse, focus_refined = pred['instances_coarse'] , pred['instances_refined'] 
         self.focus_coarse = torch.sigmoid(focus_coarse).cpu().numpy()[0, 0] * 255
         self.focus_refined = torch.sigmoid(focus_refined).cpu().numpy()[0, 0] * 255
         return focus_refined
 
-        #return self.net.refine(image_focus,points_nd, feature, mask_focus, roi)['instances_coarse'] 
 
     def mapp_roi(self, focus_roi, global_roi):
         yg1,yg2,xg1,xg2 = global_roi
@@ -201,8 +182,6 @@ class BasePredictor(object):
         xf1_n = max(xf1_n,0)
         xf2_n = min(xf2_n,self.crop_l)
         return (yf1_n,yf2_n,xf1_n,xf2_n)
-
-
 
 
         

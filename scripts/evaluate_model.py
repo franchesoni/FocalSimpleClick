@@ -7,12 +7,14 @@ import cv2
 import torch
 import numpy as np
 
+
 sys.path.insert(0, '.')
 from isegm.inference import utils
 from isegm.utils.exp import load_config_file
 from isegm.utils.vis import draw_probmap, draw_with_blend_and_clicks
 from isegm.inference.predictors import get_predictor
 from isegm.inference.evaluation import evaluate_dataset
+from isegm.model.modeling.pos_embed import interpolate_pos_embed_inference
 
 
 def parse_args():
@@ -123,6 +125,11 @@ def main():
             model = utils.load_is_model(checkpoint_path, args.device)
 
             predictor_params, zoomin_params = get_predictor_and_zoomin_params(args, dataset_name)
+
+            # For SimpleClick models, we usually need to interpolate the positional embedding
+            raise NotImplementedError("there is no simpleclick model yet")
+            if simpleclickmodel:
+                interpolate_pos_embed_inference(model.backbone, zoomin_params['target_size'], args.device)
             predictor = get_predictor(model, args.mode, args.device,
                                       infer_size=args.infer_size,
                                       prob_thresh=args.thresh,
@@ -131,7 +138,7 @@ def main():
                                       #zoom_in_params=None)
                                       zoom_in_params=zoomin_params)
 
-            #vis_callback = get_prediction_vis_callback(logs_path, dataset_name, args.thresh) if args.vis else None
+            # vis_callback = get_prediction_vis_callback(logs_path, dataset_name, args.thresh) if args.vis else None
             dataset_results = evaluate_dataset(dataset, predictor, pred_thr=args.thresh,
                                                max_iou_thr=args.target_iou,
                                                min_clicks=args.min_n_clicks,
@@ -202,7 +209,6 @@ def get_checkpoints_list_and_logs_path(args, cfg):
 
         logs_path = args.logs_path / exp_path.relative_to(cfg.EXPS_PATH)
     else:
-        #checkpoints_list = [Path(utils.find_checkpoint(cfg.INTERACTIVE_MODELS_PATH, args.checkpoint))]
         checkpoints_list = [Path(utils.find_checkpoint(args.model_dir, args.checkpoint))]
         logs_path = args.logs_path / 'others' / checkpoints_list[0].stem
 

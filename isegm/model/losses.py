@@ -28,7 +28,6 @@ class NormalizedFocalLossSigmoid(nn.Module):
         self._m_max = 0
 
     def forward(self, pred, label):
-        #print(pred.shape, label.shape)
         pred = pred.float()
         one_hot = label > 0.5
         sample_weight = label != self._ignore_label

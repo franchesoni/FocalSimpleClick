@@ -33,96 +33,104 @@ class ISDataset(torch.utils.data.dataset.Dataset):
         self.dataset_samples = None
 
     def __getitem__(self, index):
-        while(1):
+        while(True):
             try:
-                if self.samples_precomputed_scores is not None:
-                    index = np.random.choice(self.samples_precomputed_scores['indices'],
-                                            p=self.samples_precomputed_scores['probs'])
-                else:
-                    if self.epoch_len > 0:
-                        index = random.randrange(0, len(self.dataset_samples))
-
-                sample = self.get_sample(index)
-                sample = self.augment_sample(sample)
-                sample.remove_small_objects(self.min_object_area)
-
-                self.points_sampler.sample_object(sample)
-                points = np.array(self.points_sampler.sample_points())
-                mask = self.points_sampler.selected_mask
-                mask = self.remove_small_regions(mask)            
-                image = sample.image
-                mask_area = mask[0].shape[0] * mask[0].shape[1]
-
-                if self.with_refiner:
-                    trimap = self.get_trimap(mask[0])
-                    if mask[0].sum() < 3600: # 80 * 80
-                        y1,x1,y2,x2 = self.sampling_roi_full_object(mask[0])
-                    else:
-                        if np.random.rand() < 0.4:
-                            y1,x1,y2,x2 = self.sampling_roi_on_boundary(mask[0])
-                        else:
-                            y1,x1,y2,x2 = self.sampling_roi_full_object(mask[0])
-
-                    roi = torch.tensor([x1, y1, x2, y2])
-                    h,w = mask[0].shape[0], mask[0].shape[1]
-                    image_focus = image[y1:y2,x1:x2,:]
-                    image_focus = cv2.resize(image_focus, (h,w))
-
-                    mask_255 = (mask[0] * 255).astype(np.uint8)
-                    mask_focus = mask_255[y1:y2,x1:x2]
-                    mask_focus = cv2.resize(mask_focus, (h,w)) > 128
-                    mask_focus = np.expand_dims(mask_focus,0).astype(np.float32)
-
-                    trimap_255 = (trimap[0] * 255).astype(np.uint8)
-                    trimap_focus = trimap_255[y1:y2,x1:x2]
-                    trimap_focus = cv2.resize(trimap_focus, (h,w)) > 128
-                    trimap_focus = np.expand_dims(trimap_focus,0).astype(np.float32)
-
-                    hc,wc = y2-y1, x2-x1
-                    ry,rx = h/hc, w/wc
-                    bias = np.array([y1,x1,0])
-                    ratio = np.array([ry,rx,1])
-                    points_focus = (points - bias) * ratio
-
-                    if mask.sum() > self.min_object_area and mask.sum() < mask_area * 0.85:
-                        
-                        output = {
-                            'images': self.to_tensor(image),
-                            'points': points.astype(np.float32),
-                            'instances': mask,
-                            'trimap':trimap,
-                            'images_focus':self.to_tensor(image_focus),
-                            'instances_focus':mask_focus,
-                            'trimap_focus': trimap_focus,
-                            'points_focus': points_focus.astype(np.float32),
-                            'rois':roi.float()
-                        }
-
-                        if self.with_image_info:
-                            output['image_info'] = sample.sample_id
-                        return output
-                    else:
-                        index = np.random.randint(len(self.dataset_samples)-1)
-                else:
-                    if mask.sum() > self.min_object_area and mask.sum() < mask_area * 0.85:
-                        output = {
-                            'images': self.to_tensor(image),
-                            'points': points.astype(np.float32),
-                            'instances': mask,
-                        }
-
-                        if self.with_image_info:
-                            output['image_info'] = sample.sample_id
-                        return output
-                    else:
-                        index = np.random.randint(len(self.dataset_samples)-1)
+                ret_val = self.default_getitem(index)
+                assert ret_val is not None  # else we change index and rerun
+                return ret_val
             except:
                 index = np.random.randint(len(self.dataset_samples)-1)
+            
+    
+    def default_getitem(self, index):
+        if self.samples_precomputed_scores is not None:
+            index = np.random.choice(self.samples_precomputed_scores['indices'],
+                                     p=self.samples_precomputed_scores['probs'])
+        else:
+            if self.epoch_len > 0:
+                index = random.randrange(0, len(self.dataset_samples))
+
+        sample = self.get_sample(index)
+        sample = self.augment_sample(sample)
+        sample.remove_small_objects(self.min_object_area)
+
+        self.points_sampler.sample_object(sample)
+        points = np.array(self.points_sampler.sample_points())
+        mask = self.points_sampler.selected_mask
+
+        mask = self.remove_small_regions(mask)            
+        image = sample.image
+        mask_area = mask[0].shape[0] * mask[0].shape[1]
+
+        if self.with_refiner:
+            trimap = self.get_trimap(mask[0])
+            if mask[0].sum() < 3600: # 80 * 80
+                y1,x1,y2,x2 = self.sampling_roi_full_object(mask[0])
+            else:
+                if np.random.rand() < 0.4:
+                    y1,x1,y2,x2 = self.sampling_roi_on_boundary(mask[0])
+                else:
+                    y1,x1,y2,x2 = self.sampling_roi_full_object(mask[0])
+
+            roi = torch.tensor([x1, y1, x2, y2])
+            h,w = mask[0].shape[0], mask[0].shape[1]
+            image_focus = image[y1:y2,x1:x2,:]
+            image_focus = cv2.resize(image_focus, (h,w))
+
+            mask_255 = (mask[0] * 255).astype(np.uint8)
+            mask_focus = mask_255[y1:y2,x1:x2]
+            mask_focus = cv2.resize(mask_focus, (h,w)) > 128
+            mask_focus = np.expand_dims(mask_focus,0).astype(np.float32)
+
+            trimap_255 = (trimap[0] * 255).astype(np.uint8)
+            trimap_focus = trimap_255[y1:y2,x1:x2]
+            trimap_focus = cv2.resize(trimap_focus, (h,w)) > 128
+            trimap_focus = np.expand_dims(trimap_focus,0).astype(np.float32)
+
+            hc,wc = y2-y1, x2-x1
+            ry,rx = h/hc, w/wc
+            bias = np.array([y1,x1,0])
+            ratio = np.array([ry,rx,1])
+            points_focus = (points - bias) * ratio
+
+            if mask.sum() > self.min_object_area and mask.sum() < mask_area * 0.85:
+                
+                output = {
+                    'images': self.to_tensor(image),
+                    'points': points.astype(np.float32),
+                    'instances': mask,
+                    'trimap':trimap,
+                    'images_focus':self.to_tensor(image_focus),
+                    'instances_focus':mask_focus,
+                    'trimap_focus': trimap_focus,
+                    'points_focus': points_focus.astype(np.float32),
+                    'rois':roi.float()
+                }
+
+                if self.with_image_info:
+                    output['image_info'] = sample.sample_id
+                return output
+            else:
+                return None
+        else:
+            if mask.sum() > self.min_object_area and mask.sum() < mask_area * 0.85:
+                output = {
+                    'images': self.to_tensor(image),
+                    'points': points.astype(np.float32),
+                    'instances': mask,
+                }
+
+                if self.with_image_info:
+                    output['image_info'] = sample.sample_id
+                return output
+            else:
+                return None
+
 
 
     def remove_small_regions(self,mask):
         mask = mask[0] > 0.5
-        mask = skimage.morphology.remove_small_objects(mask,min_size= 900)
+        mask = skimage.morphology.remove_small_objects(mask, min_size=900)
         mask = np.expand_dims(mask,0).astype(np.float32)
         return mask
 
@@ -151,6 +159,7 @@ class ISDataset(torch.utils.data.dataset.Dataset):
 
 
     def get_trimap(self, mask):
+        """Downsample x8 and then upsample again to get the trimap."""
         h,w = mask.shape[0],mask.shape[1]
         hs,ws = h//8,w//8
         mask_255_big = (mask * 255).astype(np.uint8)
@@ -167,6 +176,10 @@ class ISDataset(torch.utils.data.dataset.Dataset):
         
 
     def augment_sample(self, sample) -> DSample:
+        assert self.augmentator is not None, "compat, shouldn't be None"
+        if self.augmentator is None:
+            return sample
+
         valid_augmentation = False
         while not valid_augmentation:
             sample.augment(self.augmentator)

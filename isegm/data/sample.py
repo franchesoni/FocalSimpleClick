@@ -46,13 +46,20 @@ class DSample:
     def augment(self, augmentator):
         self.reset_augmentation()
         aug_output = augmentator(image=self.image, mask=self._encoded_masks)
-        image, mask = aug_output['image'],aug_output['mask']
-        self.image = image
-        self._encoded_masks = mask
+        self.image = aug_output['image']
+        self._encoded_masks = aug_output['mask']
+
+        aug_replay = aug_output.get('replay', None)
+        assert not aug_replay, "compat, should be False"
+        if aug_replay:
+            assert len(self._ignored_regions) == 0
+            mask_replay = remove_image_only_transforms(aug_replay)
+            self._soft_mask_aug = ReplayCompose._restore_for_replay(mask_replay)
+
         self._compute_objects_areas()
         self.remove_small_objects(min_area=1)
+
         self._augmented = True
-    
 
     def reset_augmentation(self):
         if not self._augmented:
@@ -98,9 +105,10 @@ class DSample:
         return list(self._objects.keys())
 
     @property
-    def gt_mask(self):
+    def gt_mask(self, object_id=0):
         assert len(self._objects) == 1
-        return self.get_object_mask(self.objects_ids[0])
+        assert object_id == 0, "compat, should be 0"
+        return self.get_object_mask(self.objects_ids[object_id])
 
     @property
     def root_objects(self):
