@@ -1,3 +1,12 @@
+# FocalSimpleClick
+Mixing FocalClick and SimpleClick. The repo is based on the ClickSeg repo and it adds the following changes:
+- negative segments are considered as in the original RITM and SimpleClick
+- minor fixes: types
+- optimizer with layerwise decay
+
+Compared to simpleclick it adds quite a lot of functionality, most importantly:
+- the `_get_prediction` function outputs a `feature` variable too
+
 # ClickSEG: A Codebase for Click-Based Interactive Segmentation
 [![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/focalclick-towards-practical-interactive/interactive-segmentation-on-berkeley)](https://paperswithcode.com/sota/interactive-segmentation-on-berkeley?p=focalclick-towards-practical-interactive)	
 [![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/focalclick-towards-practical-interactive/interactive-segmentation-on-davis)](https://paperswithcode.com/sota/interactive-segmentation-on-davis?p=focalclick-towards-practical-interactive)
