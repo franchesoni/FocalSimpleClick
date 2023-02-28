@@ -6,7 +6,6 @@ from isegm.utils.misc import get_bbox_iou, get_bbox_from_mask, expand_bbox, clam
 from .base import BaseTransform
 
 
-
 class ZoomIn(BaseTransform):
     def __init__(self,
                  target_size=480,
@@ -54,18 +53,19 @@ class ZoomIn(BaseTransform):
                 current_object_roi = 0, image_nd.shape[2] - 1, 0, image_nd.shape[3] - 1
 
         # here
-        update_object_roi = True
+        update_object_roi = False 
         if self._object_roi is None:
             update_object_roi = True
         elif not check_object_roi(self._object_roi, clicks_list):
             update_object_roi = True
         elif get_bbox_iou(current_object_roi, self._object_roi) < self.recompute_thresh_iou:
             update_object_roi = True
+        assert update_object_roi, "compat, should be true"
 
         if update_object_roi:
             self._object_roi = current_object_roi
             self.image_changed = True
-        self._roi_image = get_roi_image_nd(image_nd, self._object_roi, self.target_size)
+        self._roi_image = get_roi_image_nd(image_nd, self._object_roi, self.target_size, resize=True)  # zooming in without resizing is called cropping
 
         tclicks_lists = [self._transform_clicks(clicks_list)]
         return self._roi_image.to(image_nd.device), tclicks_lists
@@ -80,12 +80,9 @@ class ZoomIn(BaseTransform):
         prob_map = torch.nn.functional.interpolate(prob_map, size=(rmax - rmin + 1, cmax - cmin + 1),
                                                    mode='bilinear', align_corners=True)
 
-       
-
         if self._prev_probs is not None:
             new_prob_map = torch.zeros(*self._prev_probs.shape, device=prob_map.device, dtype=prob_map.dtype)
             new_prob_map[:, :, rmin:rmax + 1, cmin:cmax + 1] = prob_map
-            #new_prob_map[:, :, rmin:rmax, cmin:cmax] = prob_map
         else:
             new_prob_map = prob_map
 
@@ -150,23 +147,26 @@ def get_object_roi(pred_mask, clicks_list, expansion_ratio, min_crop_size):
     return bbox
 
 
-def get_roi_image_nd(image_nd, object_roi, target_size):
+def get_roi_image_nd(image_nd, object_roi, target_size, resize=True):
     rmin, rmax, cmin, cmax = object_roi
 
     height = rmax - rmin + 1
     width = cmax - cmin + 1
 
-    if isinstance(target_size, tuple):
-        new_height, new_width = target_size
-    else:
-        scale = target_size / max(height, width)
-        new_height = int(round(height * scale))
-        new_width = int(round(width * scale))
-
     with torch.no_grad():
         roi_image_nd = image_nd[:, :, rmin:rmax + 1, cmin:cmax + 1]
-        #roi_image_nd = torch.nn.functional.interpolate(roi_image_nd, size=(new_height, new_width),
-        #                                               mode='bilinear', align_corners=True)
+
+    if resize:
+        if isinstance(target_size, tuple):
+            new_height, new_width = target_size
+        else:
+            scale = target_size / max(height, width)
+            new_height = int(round(height * scale))
+            new_width = int(round(width * scale))
+
+        with torch.no_grad():
+            roi_image_nd = torch.nn.functional.interpolate(roi_image_nd, size=(new_height, new_width),
+                                                        mode='bilinear', align_corners=True)
 
     return roi_image_nd
 
