@@ -7,8 +7,8 @@ from isegm.model.modifiers import LRMult
 
 
 class ISModel(nn.Module):
-    def __init__(self, use_rgb_conv=True, feature_stride = 4, with_aux_output=False,
-                 norm_radius=260, use_disks=False, cpu_dist_maps=False,
+    def __init__(self, use_rgb_conv=True, feature_stride = 4, with_aux_output=False, 
+                 use_disks=False, cpu_dist_maps=False,
                  clicks_groups=None, with_prev_mask=False, use_leaky_relu=False,
                  binary_prev_mask=False, conv_extend=False, norm_layer=nn.BatchNorm2d,
                  norm_mean_std=([.485, .456, .406], [.229, .224, .225])):
@@ -26,7 +26,9 @@ class ISModel(nn.Module):
         if self.with_prev_mask:
             self.coord_feature_ch += 1
 
-        mt_layers = [
+        print("use_rgb_conv should be False for SimpleClick and is", use_rgb_conv)
+        if use_rgb_conv:
+            mt_layers = [
                 nn.Conv2d(in_channels=self.coord_feature_ch, out_channels=16, kernel_size=1),
                 nn.LeakyReLU(negative_slope=0.2) if use_leaky_relu else nn.ReLU(inplace=True),
                 nn.Conv2d(in_channels=16, out_channels=64, kernel_size=3, stride=2, padding=1),
@@ -40,7 +42,19 @@ class ISModel(nn.Module):
         self.dist_maps_5 = DistMaps(norm_radius=5, spatial_scale=1.0,
                                       cpu_mode=cpu_dist_maps, use_disks=use_disks)
 
+    def forward(self, image, points):
+        image, prev_mask = self.prepare_input(image)
+        coord_features = self.get_coord_features(image, prev_mask, points)
+        coord_features = self.maps_transform(coord_features)
+        outputs = self.backbone_forward(image, coord_features)
 
+        outputs['instances'] = nn.functional.interpolate(outputs['instances'], size=image.size()[2:],
+                                                         mode='bilinear', align_corners=True)
+        if self.with_aux_output:
+            outputs['instances_aux'] = nn.functional.interpolate(outputs['instances_aux'], size=image.size()[2:],
+                                                             mode='bilinear', align_corners=True)
+
+        return outputs
 
     def prepare_input(self, image):
         prev_mask = None
@@ -57,6 +71,7 @@ class ISModel(nn.Module):
         raise NotImplementedError
 
     def get_coord_features(self, image, prev_mask, points):
+        assert self.clicks_groups is None, "compat, should be None"
         if self.clicks_groups is not None:
             points_groups = split_points_by_order(points, groups=(2,) + (1, ) * (len(self.clicks_groups) - 2) + (-1,))
             coord_features = [dist_map(image, pg) for dist_map, pg in zip(self.dist_maps, points_groups)]
@@ -79,7 +94,7 @@ class ISModel(nn.Module):
         print('Missing Keys: ', missing_keys)
         print('Unexpected Keys: ', unexpected_keys)
         state_dict.update(pretrained_state_dict)
-        self.load_state_dict(state_dict, strict= False)
+        self.load_state_dict(state_dict, strict=True)
         '''
         if self.inference_mode:
             for param in self.backbone.parameters():
