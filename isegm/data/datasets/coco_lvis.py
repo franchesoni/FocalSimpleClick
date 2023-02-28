@@ -7,7 +7,7 @@ import cv2
 from copy import deepcopy
 from isegm.data.base import ISDataset
 from isegm.data.sample import DSample
- 
+
 
 class CocoLvisDataset(ISDataset):
     def __init__(self, dataset_path, split='train',img_split='train2017',stuff_prob=0.0,
@@ -19,8 +19,6 @@ class CocoLvisDataset(ISDataset):
         self.split = split
         self.img_split = img_split
         self._images_path = self._split_path / 'images'
-        #self._images_path = self.img_split_path / 'images'
-
         self._masks_path = self._split_path / 'masks'
         self.stuff_prob = stuff_prob
 
@@ -42,16 +40,14 @@ class CocoLvisDataset(ISDataset):
 
         image = cv2.imread(str(image_path))
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
         packed_masks_path = self._masks_path / f'{image_id}.pickle'
-
-
         with open(packed_masks_path, 'rb') as f:
             encoded_layers, objs_mapping = pickle.load(f)
         layers = [cv2.imdecode(x, cv2.IMREAD_UNCHANGED) for x in encoded_layers]
         layers = np.stack(layers, axis=2)
 
         instances_info = deepcopy(sample['hierarchy'])
-
         for inst_id, inst_info in list(instances_info.items()):
             if inst_info is None:
                 inst_info = {'children': [], 'parent': None, 'node_level': 0}
@@ -70,7 +66,4 @@ class CocoLvisDataset(ISDataset):
                 layer_indx, mask_id = objs_mapping[inst_id]
                 layers[:, :, layer_indx][layers[:, :, layer_indx] == mask_id] = 0
 
-        
-       
-        #return DSample(image, layers, objects_ids=np.unique(layers), sample_id=index)
         return DSample(image, layers, objects=instances_info)

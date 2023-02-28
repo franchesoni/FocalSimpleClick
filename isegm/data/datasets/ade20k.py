@@ -45,9 +45,9 @@ def iter_files(root_dir, with_part = False):
 
 
 class ADE20kDataset(ISDataset):
-    def __init__(self, dataset_path = None, with_part = False,
-                 **kwargs):
+    def __init__(self, dataset_path = None, with_part = False, split='train', stuff_prob=0.0, **kwargs):
         super(ADE20kDataset, self).__init__(**kwargs)
+        assert split in {'train', 'val'}
         self.name = 'ADE20K'
         self.subset = 'train'
         self.dataset_path = dataset_path + '/ADE20K_2016_07_26/images/training/'
